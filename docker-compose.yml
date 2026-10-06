@@ -1,0 +1,99 @@
+name: aegisdr
+services:
+  initialize:
+    image: python:3.13-alpine
+    command: ["python", "/init-secrets.py"]
+    volumes:
+      - ./infrastructure/docker/init-secrets.py:/init-secrets.py:ro
+      - secrets:/secrets
+      - recovery-data:/data
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: aegis
+      POSTGRES_DB: aegis_demo
+      POSTGRES_PASSWORD_FILE: /run/aegis-secrets/postgres-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - secrets:/run/aegis-secrets:ro
+    depends_on:
+      initialize:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis_demo"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  platform:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile
+    ports: ["127.0.0.1:8088:8080"]
+    environment:
+      AEGIS_DATA_DIR: /data
+      AEGIS_LOCAL_MODE: "true"
+      # Published listener is loopback-only; Docker NAT supplies a private bridge peer.
+      AEGIS_CONTAINER_LOCAL_SESSION: "true"
+      AEGIS_API_TOKEN_FILE: /run/aegis-secrets/api-token
+      AEGIS_POSTGRES_ENV: AEGIS_DB_DEMO
+      AEGIS_DB_DEMO_FILE: /run/aegis-secrets/postgres-url
+    volumes:
+      - recovery-data:/data
+      - secrets:/run/aegis-secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+  demo-app:
+    build:
+      context: .
+      dockerfile: demo-app/Dockerfile
+    environment:
+      DATABASE_URL_FILE: /run/aegis-secrets/postgres-url
+    volumes:
+      - secrets:/run/aegis-secrets:ro
+    ports: ["127.0.0.1:8001:8001"]
+    depends_on:
+      platform:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ["monitoring"]
+    volumes:
+      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - secrets:/run/aegis-secrets:ro
+    ports: ["127.0.0.1:9090:9090"]
+    depends_on:
+      platform:
+        condition: service_healthy
+  grafana:
+    image: grafana/grafana:12.2.0
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_USER: operator
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/aegis-secrets/grafana-password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - secrets:/run/aegis-secrets:ro
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/monitoring/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [prometheus]
+volumes:
+  secrets:
+  postgres-data:
+  recovery-data:
+  grafana-data:
