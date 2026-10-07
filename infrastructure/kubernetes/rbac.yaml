@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aegisdr-operator
+  namespace: aegisdr-demo
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: aegisdr-operator
+  namespace: aegisdr-demo
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch, delete]
+  - apiGroups: [""]
+    resources: [services, configmaps]
+    verbs: [get, list, watch, create, patch, update]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, patch, update]
+  - apiGroups: [apps]
+    resources: [deployments/scale]
+    resourceNames: [demo-app]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aegisdr-operator
+  namespace: aegisdr-demo
+subjects:
+  - kind: ServiceAccount
+    name: aegisdr-operator
+    namespace: aegisdr-demo
+roleRef:
+  kind: Role
+  name: aegisdr-operator
+  apiGroup: rbac.authorization.k8s.io
