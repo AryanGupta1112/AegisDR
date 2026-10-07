@@ -1,0 +1,96 @@
+name: Local platform validation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aegis_test
+          POSTGRES_DB: aegis_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aegis_test -d aegis_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: pip install -r backend/requirements.txt
+      - name: Matching PostgreSQL clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+      - run: python -m ruff check backend demo-app scripts automation
+      - name: Backend and database recovery tests
+        env:
+          AEGIS_TEST_POSTGRES_URL: postgresql://aegis_test@127.0.0.1:5432/aegis_test
+        run: python -m pytest
+      - run: pip-audit -r backend/requirements.txt
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install PyYAML kubernetes-validate
+      - run: python scripts/validate-infrastructure.py
+      - run: docker compose config --quiet
+      - uses: azure/setup-kubectl@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
+      - run: kubectl kustomize infrastructure/kubernetes | $(go env GOPATH)/bin/kubeconform -strict -summary
+      - run: docker compose build platform demo-app
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r backend/requirements.txt
+      - run: npm ci --prefix frontend
+      - run: npx --prefix frontend playwright install --with-deps chromium
+      - name: Start isolated local services
+        run: |
+          python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 > /tmp/aegis-api.log 2>&1 &
+          npm run dev --prefix frontend > /tmp/aegis-ui.log 2>&1 &
+          for attempt in $(seq 1 30); do curl -fsS http://127.0.0.1:5173/ && curl -fsS http://127.0.0.1:8000/health && break; sleep 1; done
+      - run: npm run test:e2e --prefix frontend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-traces
+          path: frontend/test-results
