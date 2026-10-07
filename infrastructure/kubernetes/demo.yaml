@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: demo-postgres-data
+  namespace: aegisdr-demo
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-postgres
+  namespace: aegisdr-demo
+  labels:
+    app: demo-postgres
+    aegisdr.io/managed: "true"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: demo-postgres
+  template:
+    metadata:
+      labels:
+        app: demo-postgres
+        aegisdr.io/managed: "true"
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - name: POSTGRES_USER
+              value: aegis
+            - name: POSTGRES_DB
+              value: aegis_demo
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: demo-database
+                  key: password
+          ports:
+            - containerPort: 5432
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, aegis, -d, aegis_demo]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: demo-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-postgres
+  namespace: aegisdr-demo
+  labels:
+    aegisdr.io/managed: "true"
+spec:
+  selector:
+    app: demo-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  namespace: aegisdr-demo
+  labels:
+    app: demo-app
+    aegisdr.io/managed: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+        aegisdr.io/managed: "true"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: demo-app
+          image: aegisdr-demo:local
+          imagePullPolicy: Never
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: demo-database
+                  key: url
+          ports:
+            - containerPort: 8001
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 300m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          livenessProbe:
+            tcpSocket:
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app
+  namespace: aegisdr-demo
+  labels:
+    aegisdr.io/managed: "true"
+spec:
+  selector:
+    app: demo-app
+  ports:
+    - port: 8001
+      targetPort: 8001
