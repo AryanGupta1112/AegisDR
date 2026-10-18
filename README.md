@@ -31,6 +31,8 @@ React 19, TypeScript, Vite, Tailwind CSS, React Router, Framer Motion, Lucide, R
 
 ## Start locally
 
+To run the whole app on Kubernetes on your computer, use `.\scripts\start-kubernetes.ps1`. See the [local Kubernetes guide](docs/local-kubernetes.md) for updating, stopping, and checking it.
+
 For automatic Kubernetes releases, see the [Kubernetes deployment guide](docs/kubernetes-deployment.md). CI tests the deployment on a disposable cluster and publishes successful main-branch builds; cloud rollout requires a connected cluster and HTTPS hostname.
 
 ### One-command Docker Compose

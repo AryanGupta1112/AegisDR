@@ -22,7 +22,10 @@ def main():
     parser.add_argument("--ingress-class", default="nginx")
     parser.add_argument("--render-only", action="store_true")
     parser.add_argument("--skip-ingress", action="store_true", help="For isolated cluster tests using port-forward")
+    parser.add_argument("--local", action="store_true", help="Enable loopback-only browser login for a local cluster")
     args = parser.parse_args()
+    if args.local and (not args.skip_ingress or args.host not in ("localhost", "127.0.0.1")):
+        parser.error("--local requires --skip-ingress and a loopback hostname")
     if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", args.host):
         parser.error("--host must be a DNS hostname without a scheme or path")
     if not re.fullmatch(r"[a-z0-9][a-z0-9./:@_-]*", args.image):
@@ -34,7 +37,13 @@ def main():
             container["image"] = args.image
             for env in container["env"]:
                 if env["name"] == "AEGIS_ORIGINS":
-                    env["value"] = f"https://{args.host}"
+                    env["value"] = (
+                        "http://127.0.0.1:8088,http://localhost:8088" if args.local else f"https://{args.host}"
+                    )
+                if env["name"] == "AEGIS_LOCAL_MODE" and args.local:
+                    env["value"] = "true"
+            if args.local:
+                resource["spec"]["template"]["spec"].pop("imagePullSecrets", None)
         if resource["kind"] == "Ingress":
             resource["spec"]["ingressClassName"] = args.ingress_class
             resource["spec"]["rules"][0]["host"] = args.host

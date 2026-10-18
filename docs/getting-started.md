@@ -4,6 +4,8 @@ AegisDR keeps copies of your app's files and records. If data is lost, you can b
 
 ## Open the app
 
+If you want to run the app with local Kubernetes, use the [local Kubernetes guide](local-kubernetes.md) instead. It starts the dashboard and database inside Docker Desktop's local containers.
+
 From the project folder, run this Windows command:
 
 ```powershell
