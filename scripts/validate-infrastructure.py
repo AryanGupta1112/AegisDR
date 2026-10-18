@@ -8,7 +8,7 @@ from kubernetes_validate import validate
 
 root = Path(__file__).resolve().parents[1]
 resources = []
-for path in (root / "infrastructure/kubernetes").glob("*.yaml"):
+for path in (root / "infrastructure/kubernetes").rglob("*.yaml"):
     for obj in yaml.safe_load_all(path.read_text()):
         assert obj and obj.get("apiVersion") and obj.get("kind"), path
         if obj["kind"] == "Kustomization":
@@ -21,7 +21,7 @@ for path in (root / "infrastructure/kubernetes").glob("*.yaml"):
 assert len({(obj["kind"], obj["metadata"]["name"]) for obj in resources}) == len(resources)
 for obj in resources:
     if obj["kind"] == "Deployment":
-        assert obj["metadata"]["namespace"] == "aegisdr-demo"
+        assert obj["metadata"].get("namespace") in (None, "aegisdr-demo", "aegisdr")
         assert obj["spec"]["template"]["spec"]["containers"][0].get("readinessProbe")
 for path in (root / ".github/workflows").glob("*.yml"):
     obj = yaml.safe_load(path.read_text())

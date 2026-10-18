@@ -81,6 +81,43 @@ jobs:
       - name: Stop disposable deployment
         if: always()
         run: docker compose --profile monitoring down
+      - name: Create disposable Kubernetes cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: aegisdr-ci
+          version: v0.27.0
+          node_image: kindest/node:v1.32.2
+      - name: Load tested image and deploy to Kubernetes
+        run: |
+          kind load docker-image aegisdr-platform:latest --name aegisdr-ci
+          python scripts/prepare-kubernetes.py
+          python scripts/deploy-kubernetes.py --image aegisdr-platform:latest --host aegisdr.test --skip-ingress
+      - name: Check Kubernetes recovery with remote authentication
+        env:
+          AEGIS_CHECK_KUBERNETES: 'true'
+          AEGIS_CHECK_ORIGIN: https://aegisdr.test
+        run: |
+          kubectl -n aegisdr port-forward service/aegisdr 8088:8080 > /tmp/aegis-kube-forward.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8088/health; then break; fi
+            sleep 1
+          done
+          token=$(kubectl -n aegisdr get secret aegisdr-credentials -o jsonpath='{.data.api-token}' | base64 --decode)
+          echo "::add-mask::$token"
+          export AEGIS_CHECK_API_TOKEN="$token"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8088/api/applications)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8088/api/session)" = 403
+          python scripts/check-deployment.py
+      - name: Kubernetes diagnostics
+        if: failure()
+        run: |
+          kubectl -n aegisdr get pods,pvc
+          kubectl -n aegisdr get events --sort-by=.lastTimestamp
+          kubectl -n aegisdr logs deployment/aegisdr --tail=100 || true
+          kubectl -n aegisdr logs statefulset/aegisdr-postgres --tail=100 || true
+      - name: Stop disposable Kubernetes cluster
+        if: always()
+        run: kind delete cluster --name aegisdr-ci
   browser:
     runs-on: ubuntu-latest
     steps:
@@ -105,3 +142,60 @@ jobs:
         with:
           name: browser-traces
           path: frontend/test-results
+  publish:
+    needs: [frontend, backend, infrastructure, browser]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.reference }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and publish the tested release
+        id: image
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker build -f infrastructure/docker/Dockerfile -t "$image" .
+          docker push "$image"
+          digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$image")
+          echo "reference=$digest" >> "$GITHUB_OUTPUT"
+      - name: Sign out of registry
+        if: always()
+        run: docker logout ghcr.io
+  deploy:
+    needs: publish
+    if: vars.KUBERNETES_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: aegisdr-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: azure/setup-kubectl@v4
+      - run: pip install PyYAML
+      - name: Connect cluster and deploy immutable release
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+          APP_HOST: ${{ vars.APP_HOST }}
+          INGRESS_CLASS: ${{ vars.INGRESS_CLASS || 'nginx' }}
+          RELEASE_IMAGE: ${{ needs.publish.outputs.image }}
+          KUBECONFIG: ${{ runner.temp }}/aegisdr-kubeconfig
+        run: |
+          test -n "$KUBE_CONFIG" && test -n "$APP_HOST"
+          umask 077
+          printf '%s' "$KUBE_CONFIG" > "$KUBECONFIG"
+          python scripts/deploy-kubernetes.py --image "$RELEASE_IMAGE" --host "$APP_HOST" --ingress-class "$INGRESS_CLASS"
+          curl --fail --retry 6 --retry-delay 5 --retry-all-errors "https://$APP_HOST/health"
+      - name: Remove cluster credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/aegisdr-kubeconfig"

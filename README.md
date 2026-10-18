@@ -31,6 +31,8 @@ React 19, TypeScript, Vite, Tailwind CSS, React Router, Framer Motion, Lucide, R
 
 ## Start locally
 
+For automatic Kubernetes releases, see the [Kubernetes deployment guide](docs/kubernetes-deployment.md). CI tests the deployment on a disposable cluster and publishes successful main-branch builds; cloud rollout requires a connected cluster and HTTPS hostname.
+
 ### One-command Docker Compose
 
 Prerequisites: Docker Engine/Desktop **running**, Docker Compose v2 and available ports 8088/8001. From this directory:

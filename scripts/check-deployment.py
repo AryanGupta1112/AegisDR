@@ -6,16 +6,19 @@ import os
 import time
 import urllib.request
 
-BASE = "http://127.0.0.1:8088"
+BASE = os.environ.get("AEGIS_CHECK_URL", "http://127.0.0.1:8088")
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
 
 def request(path, data=None, base=BASE):
     payload = json.dumps(data).encode() if data is not None else None
+    headers = {"Content-Type": "application/json", "Origin": os.environ.get("AEGIS_CHECK_ORIGIN", BASE)}
+    if base == BASE and os.environ.get("AEGIS_CHECK_API_TOKEN"):
+        headers["Authorization"] = f"Bearer {os.environ['AEGIS_CHECK_API_TOKEN']}"
     req = urllib.request.Request(
         base + path,
         data=payload,
-        headers={"Content-Type": "application/json", "Origin": BASE},
+        headers=headers,
     )
     with opener.open(req, timeout=15) as response:
         return json.load(response)
@@ -37,7 +40,8 @@ def main():
     assert request("/health")["status"] == "ok"
     with opener.open(BASE + "/applications", timeout=15) as response:
         assert b'<div id="root"' in response.read(), "Compiled dashboard is unavailable"
-    request("/api/session", {})
+    if not os.environ.get("AEGIS_CHECK_API_TOKEN"):
+        request("/api/session", {})
     app = next(row for row in request("/api/applications") if row["demo"])
     assert app["kind"] == "postgres", "Expected the Compose PostgreSQL demo"
     request("/api/demo/notes", {"text": "Deployment recovery check"})
@@ -46,6 +50,9 @@ def main():
     wait_for_job(request(f"/api/backups/{backup['backup_id']}/verify", {}))
     wait_for_job(request("/api/simulations", {"scenario": "data-loss", "confirmation": "DISRUPT DEMO"}))
     assert request("/api/demo/notes")["notes"] == original_notes, "Recovery changed the original notes"
+    if os.environ.get("AEGIS_CHECK_KUBERNETES") == "true":
+        print("Kubernetes passed: dashboard, authenticated API, PostgreSQL backup/verification/recovery")
+        return
     assert request("/health", base="http://127.0.0.1:8001")["database"] == "postgresql"
     grafana_url = os.environ.get("AEGIS_CHECK_GRAFANA_URL", "http://127.0.0.1:3000")
     assert request("/api/health", base=grafana_url)["database"] == "ok"
