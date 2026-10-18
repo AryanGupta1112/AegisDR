@@ -269,7 +269,13 @@ class RecoveryEngine:
                     path = (target / member.name).resolve()
                     if not path.is_relative_to(target) or not member.isfile():
                         raise ValueError("Unsafe archive entry; only regular files can be restored")
-                archive.extractall(target, filter="data")
+                # Copy validated regular files only; older Python 3.11 builds lack
+                # tarfile's data filter. Never apply archive links or permissions.
+                for member in archive.getmembers():
+                    path = target / member.name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.extractfile(member) as incoming, path.open("wb") as outgoing:
+                        shutil.copyfileobj(incoming, outgoing)
             stage("Restoring database transaction", 55)
             if app.kind == "postgres":
                 self.pg(

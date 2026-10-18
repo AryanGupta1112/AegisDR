@@ -2,6 +2,7 @@
 
 import http.cookiejar
 import json
+import os
 import time
 import urllib.request
 
@@ -46,7 +47,8 @@ def main():
     wait_for_job(request("/api/simulations", {"scenario": "data-loss", "confirmation": "DISRUPT DEMO"}))
     assert request("/api/demo/notes")["notes"] == original_notes, "Recovery changed the original notes"
     assert request("/health", base="http://127.0.0.1:8001")["database"] == "postgresql"
-    assert request("/api/health", base="http://127.0.0.1:3000")["database"] == "ok"
+    grafana_url = os.environ.get("AEGIS_CHECK_GRAFANA_URL", "http://127.0.0.1:3000")
+    assert request("/api/health", base=grafana_url)["database"] == "ok"
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         targets = request("/api/v1/targets", base="http://127.0.0.1:9090")["data"]["activeTargets"]
