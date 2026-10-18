@@ -48,9 +48,9 @@ The original, archived Kubernetes Dashboard can also run alongside Headlamp:
 .\scripts\start-original-kubernetes-dashboard.ps1
 ```
 
-Open **https://localhost:8443**. The chart uses a self-signed certificate, so your browser may show a certificate warning for this local address. Continue to the local page, select **Token**, paste the token copied to your clipboard, and sign in. Select namespace **aegisdr** to see the application and database. The token has read-only access and expires after 24 hours; run the script again to renew it.
+Open **http://127.0.0.1:9092/#/workloads?namespace=aegisdr**. You are signed in automatically with read-only access. No token copying or certificate exception is needed. The local proxy obtains and renews a short-lived viewer credential in memory and adds the login header server-side. It does not save the credential in a file. The internal HTTPS connection at port 8443 remains a manual-login endpoint; use port 9092 for automatic login.
 
-This installs pinned archived Helm chart `7.14.0` and keeps its connection bound to loopback. Headlamp at port 9091 and AegisDR at port 8088 remain separate. Helm is downloaded into ignored `.data/tools` and its archive checksum is verified. The original Dashboard is retained for local demonstrations; it is not included in the cloud deployment.
+This installs pinned archived Helm chart `7.14.0` and keeps both connections bound to loopback. The proxy accepts only localhost hostnames and local browser origins; Kubernetes still enforces the viewer's read-only permissions. Headlamp at port 9091 and AegisDR at port 8088 remain separate. Helm is downloaded into ignored `.data/tools` and its archive checksum is verified. The original Dashboard is retained for local demonstrations; this automatic-login setup is not included in the cloud deployment.
 
 Stop its connection using `.\scripts\start-original-kubernetes-dashboard.ps1 -Stop`. This does not uninstall the Dashboard or stop the cluster.
 

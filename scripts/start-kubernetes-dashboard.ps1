@@ -1,4 +1,4 @@
-param([switch]$Stop, [switch]$Original)
+param([switch]$Stop, [switch]$Original, [switch]$NoTokenClipboard)
 
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -74,6 +74,10 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
     Start-Sleep -Seconds 1
 }
 if (-not $ready) { throw 'Dashboard did not respond' }
+if ($NoTokenClipboard) {
+    Write-Host 'Dashboard upstream connection is ready.'
+    exit 0
+}
 $loginToken = kubectl --kubeconfig $configPath --context kind-aegisdr-local -n $dashboardNamespace `
     create token viewer --duration=24h
 if ($LASTEXITCODE -ne 0) { throw 'Could not create the dashboard login' }
