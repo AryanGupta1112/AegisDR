@@ -18,7 +18,7 @@ for path in (root / "infrastructure/kubernetes").rglob("*.yaml"):
         assert obj.get("metadata", {}).get("name"), path
         validate(obj, desired_version="1.31.0", strict=True)
         resources.append(obj)
-assert len({(obj["kind"], obj["metadata"]["name"]) for obj in resources}) == len(resources)
+assert len({(obj["kind"], obj["metadata"].get("namespace"), obj["metadata"]["name"]) for obj in resources}) == len(resources)
 for obj in resources:
     if obj["kind"] == "Deployment":
         assert obj["metadata"].get("namespace") in (None, "aegisdr-demo", "aegisdr", "aegisdr-dashboard")

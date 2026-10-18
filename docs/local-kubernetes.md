@@ -40,6 +40,20 @@ The login has read-only access, excluding Secrets, and expires after 24 hours. R
 
 Close its connection with `.\scripts\start-kubernetes-dashboard.ps1 -Stop`. This leaves AegisDR and the cluster running.
 
+### Original Kubernetes Dashboard web app
+
+The original, archived Kubernetes Dashboard can also run alongside Headlamp:
+
+```powershell
+.\scripts\start-original-kubernetes-dashboard.ps1
+```
+
+Open **https://localhost:8443**. The chart uses a self-signed certificate, so your browser may show a certificate warning for this local address. Continue to the local page, select **Token**, paste the token copied to your clipboard, and sign in. Select namespace **aegisdr** to see the application and database. The token has read-only access and expires after 24 hours; run the script again to renew it.
+
+This installs pinned archived Helm chart `7.14.0` and keeps its connection bound to loopback. Headlamp at port 9091 and AegisDR at port 8088 remain separate. Helm is downloaded into ignored `.data/tools` and its archive checksum is verified. The original Dashboard is retained for local demonstrations; it is not included in the cloud deployment.
+
+Stop its connection using `.\scripts\start-original-kubernetes-dashboard.ps1 -Stop`. This does not uninstall the Dashboard or stop the cluster.
+
 ```powershell
 kubectl --kubeconfig .data/local-kubernetes/kubeconfig -n aegisdr get pods,pvc
 ```
