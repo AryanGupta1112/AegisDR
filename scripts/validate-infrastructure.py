@@ -21,7 +21,7 @@ for path in (root / "infrastructure/kubernetes").rglob("*.yaml"):
 assert len({(obj["kind"], obj["metadata"]["name"]) for obj in resources}) == len(resources)
 for obj in resources:
     if obj["kind"] == "Deployment":
-        assert obj["metadata"].get("namespace") in (None, "aegisdr-demo", "aegisdr")
+        assert obj["metadata"].get("namespace") in (None, "aegisdr-demo", "aegisdr", "aegisdr-dashboard")
         assert obj["spec"]["template"]["spec"]["containers"][0].get("readinessProbe")
 for path in (root / ".github/workflows").glob("*.yml"):
     obj = yaml.safe_load(path.read_text())

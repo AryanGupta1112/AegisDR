@@ -28,6 +28,18 @@ Do not delete the `aegisdr-local` cluster, its Docker container, or its volume c
 
 ## Check the running services
 
+For a live visual view, start the Headlamp Kubernetes dashboard:
+
+```powershell
+.\scripts\start-kubernetes-dashboard.ps1
+```
+
+Open **http://127.0.0.1:9091**, paste the login token from your clipboard, and sign in. Select namespace **aegisdr** to see the platform and PostgreSQL. Use **Workloads → Pods** for running containers and logs, **Deployments** for the platform, **StatefulSets** for PostgreSQL, and **Storage → Persistent Volume Claims** for saved storage. Status updates come from your actual local cluster. Resource usage graphs require a metrics server, which this setup does not install.
+
+The login has read-only access, excluding Secrets, and expires after 24 hours. Run the launcher again for a fresh token or after reconnecting Docker. This dashboard is separate from AegisDR's own interface at port 8088 and is only reachable on this computer. It uses Headlamp because the old Kubernetes Dashboard is deprecated ([official guidance](https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/)).
+
+Close its connection with `.\scripts\start-kubernetes-dashboard.ps1 -Stop`. This leaves AegisDR and the cluster running.
+
 ```powershell
 kubectl --kubeconfig .data/local-kubernetes/kubeconfig -n aegisdr get pods,pvc
 ```
