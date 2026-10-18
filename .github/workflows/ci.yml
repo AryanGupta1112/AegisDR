@@ -55,6 +55,7 @@ jobs:
       - run: pip-audit -r backend/requirements.txt
   infrastructure:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -70,6 +71,16 @@ jobs:
       - run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
       - run: kubectl kustomize infrastructure/kubernetes | $(go env GOPATH)/bin/kubeconform -strict -summary
       - run: docker compose build platform demo-app
+      - name: Start disposable deployment with monitoring
+        run: docker compose --profile monitoring up --detach --wait --wait-timeout 180
+      - name: Check deployment and real PostgreSQL recovery
+        run: python scripts/check-deployment.py
+      - name: Deployment diagnostics
+        if: failure()
+        run: docker compose --profile monitoring logs --tail 100
+      - name: Stop disposable deployment
+        if: always()
+        run: docker compose --profile monitoring down
   browser:
     runs-on: ubuntu-latest
     steps:
